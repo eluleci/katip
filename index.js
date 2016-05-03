@@ -7,17 +7,21 @@ if (!which('git')) {
   exit(1);
 }
 
-// current directory
-var DIR = pwd().stdout
-var PIPELINES_DIR = DIR + '/pipelines/'
+var DIR = pwd().stdout                  // path of current directory
+var PIPELINES_DIR = DIR + '/pipelines/' // path to put pipeline folders
 
-jsonfile.readFile('config.json', function(err, data) {
-  if (err) throw err
+start()
 
-  data.pipelines.forEach(function(pipeline){
-    handlePipeline(pipeline)
-  })
-});
+function start() {
+  try {
+    var config = jsonfile.readFileSync('config.json')
+    config.pipelines.forEach(function(pipeline){
+      handlePipeline(pipeline)
+    })
+  } catch(err) {
+    console.log('Error: ' + err)
+  }
+}
 
 function handlePipeline(pipeline) {
   console.log('PIPELINE: ' + pipeline.name)
@@ -44,25 +48,16 @@ function handlePipeline(pipeline) {
   var srcDir = pipelineDir + '/src'
   cd(srcDir)
 
+  // switch to the specified branch
+  console.log("Switching to branch '" + pipeline.vc.branch + "'")
+  exec('git checkout ' + pipeline.vc.branch)
+
   pipeline.stages.forEach(function(stage){
     pipelineLog.stages.push(handleStage(stage))
   })
 
   if (pipeline.artifacts) {
-    pipeline.artifacts.forEach(function(artifact){
-      var sourcePath = pipelineDir + '/src/' + artifact.src
-      var artifactPath = pipelineDir + '/artifacts/' + artifact.dst
-      try{
-        var files = ls(sourcePath)
-      } catch(err) {
-        console.log(err)
-      }
-
-      mkdir('-p', artifactPath)
-      files.forEach(function(file){
-        cp(file, artifactPath)
-      })
-    })
+    exportArtifacts(pipeline, pipelineDir)
   }
 
   pipelineLog.end = new Date()
@@ -115,6 +110,24 @@ function handleTask(task) {
     taskLog.elapsed = taskLog.end - taskLog.start
     console.log('END TASK - ' + taskLog.elapsed + 'ms : ' + task.cmd)
     return taskLog
+}
+
+function exportArtifacts(pipeline, pipelineDir) {
+
+    pipeline.artifacts.forEach(function(artifact){
+      var sourcePath = pipelineDir + '/src/' + artifact.src
+      var artifactPath = pipelineDir + '/artifacts/' + artifact.dst
+      try{
+        var files = ls(sourcePath)
+      } catch(err) {
+        console.log(err)
+      }
+
+      mkdir('-p', artifactPath)
+      files.forEach(function(file){
+        cp(file, artifactPath)
+      })
+    })
 }
 
 function updateHistory(package, data) {
