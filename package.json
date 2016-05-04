@@ -12,8 +12,10 @@
     "katip": "./index.js"
   },
   "dependencies": {
+    "dateformat": "^1.0.12",
     "jsonfile": "^2.3.0",
     "shelljs": "^0.7.0",
+    "sleep": "^3.0.1",
     "sync": "^0.2.5"
   }
 }

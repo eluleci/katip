@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 require('shelljs/global');
 var jsonfile = require('jsonfile')
+var sleep = require('sleep')
+var dateFormat = require('dateformat')
+
+var isRunning = false
+var CHECK_PERIOD = 30
 
 if (!which('git')) {
   echo('Sorry, this script requires git');
@@ -10,16 +15,29 @@ if (!which('git')) {
 var DIR = pwd().stdout                  // path of current directory
 var PIPELINES_DIR = DIR + '/pipelines/' // path to put pipeline folders
 
-start()
+run()
 
-function start() {
+function run() {
+
+  var config
   try {
-    var config = jsonfile.readFileSync('config.json')
-    config.pipelines.forEach(function(pipeline){
-      handlePipeline(pipeline)
-    })
+    config = jsonfile.readFileSync('config.json')
   } catch(err) {
-    console.log('Error: ' + err)
+    log('Error: ' + err)
+  }
+
+  while(true) {
+
+    config.pipelines.forEach(function(pipeline){
+      if(hasProjectChanged(pipeline)) {
+        log('There is a change in the project ' + pipeline.name + '. Starting the pipeline.')
+        handlePipeline(pipeline)
+      } else {
+        log('There is no change in the project ' + pipeline.name)
+      }
+    })
+
+    sleep.sleep(CHECK_PERIOD)
   }
 }
 
@@ -27,10 +45,11 @@ function start() {
  * Checks pipeline history and triggers handlePipeline() if there is a change
  * in the project.
  */
-function hasProjectChanged(domain) {
+function hasProjectChanged(pipeline) {
+  log('Checking for changes for project ' + pipeline.name)
 
   var history = getHistory()
-  var pipelineHistory = history[domain]
+  var pipelineHistory = history[pipeline.domain]
 
   // if there is no record in the history yet, return true for initial run
   if (!pipelineHistory) {
@@ -39,26 +58,18 @@ function hasProjectChanged(domain) {
 
   var lastLog = pipelineHistory[pipelineHistory.length - 1]
 
-  var pipelineSrcDir = PIPELINES_DIR + domain+ '/src'
+  var pipelineSrcDir = PIPELINES_DIR + pipeline.domain+ '/src'
   cd(pipelineSrcDir)
 
+  exec('git checkout ' + pipeline.vc.branch, {silent:true})
   var commitHash = exec('git rev-parse --verify HEAD', {silent:true}).stdout
   commitHash = commitHash.substring(0, commitHash.length - 1)
-
-  console.log(lastLog.commitHash)
-  console.log(commitHash)
 
   return lastLog.commitHash != commitHash
 }
 
 function handlePipeline(pipeline) {
-  console.log('PIPELINE: ' + pipeline.name)
-
-  // return if there is no update in the project
-  if(!hasProjectChanged(pipeline.domain)) {
-    console.log('There is no change in the project.')
-    return
-  }
+  log('PIPELINE: ' + pipeline.name)
 
   var pipelineDir = PIPELINES_DIR + pipeline.domain
 
@@ -82,7 +93,7 @@ function handlePipeline(pipeline) {
   cd(pipelineDir + '/src')
 
   // switch to the specified branch
-  console.log("Switching to branch '" + pipeline.vc.branch + "'")
+  log("Switching to branch '" + pipeline.vc.branch + "'")
   exec('git checkout ' + pipeline.vc.branch)
 
   // get the last commit hash and trim the \n character at the end
@@ -99,12 +110,12 @@ function handlePipeline(pipeline) {
 
   pipelineLog.end = new Date()
   pipelineLog.elapsed = pipelineLog.end - pipelineLog.start
-  console.log('END PIPELINE - ' + pipelineLog.elapsed + 'ms : ' + pipeline.name)
+  log('END PIPELINE - ' + pipelineLog.elapsed + 'ms : ' + pipeline.name)
   updateHistory(pipeline.domain, pipelineLog)
 }
 
 function handleStage(stage) {
-  console.log('STAGE: ' + stage.name)
+  log('STAGE: ' + stage.name)
   var stageLog = {name: stage.name, jobs: []}
   stageLog.start = new Date()
 
@@ -114,12 +125,12 @@ function handleStage(stage) {
 
   stageLog.end = new Date()
   stageLog.elapsed = stageLog.end - stageLog.start
-  console.log('END STAGE - ' + stageLog.elapsed + 'ms : ' + stage.name)
+  log('END STAGE - ' + stageLog.elapsed + 'ms : ' + stage.name)
   return stageLog
 }
 
 function handleJob(job) {
-  console.log('JOB: ' + job.name)
+  log('JOB: ' + job.name)
   var jobLog = {name: job.name, tasks: []}
   jobLog.start = new Date()
 
@@ -129,35 +140,37 @@ function handleJob(job) {
 
   jobLog.end = new Date()
   jobLog.elapsed = jobLog.end - jobLog.start
-  console.log('END JOB - ' + jobLog.elapsed + 'ms : ' + job.name)
+  log('END JOB - ' + jobLog.elapsed + 'ms : ' + job.name)
   return jobLog
 }
 
 function handleTask(task) {
-    console.log('TASK: ' + task.cmd)
+    log('TASK: ' + task.cmd)
     var taskLog = {name: task.cmd}
     taskLog.start = new Date()
 
     if (exec(task.cmd).code !== 0) {
       echo("Error: Executing the command '" + task.cmd + "' failed.");
-      exit(1);
+      taskLog.status = 'failed'
     }
 
+    taskLog.status = 'success'
     taskLog.end = new Date()
     taskLog.elapsed = taskLog.end - taskLog.start
-    console.log('END TASK - ' + taskLog.elapsed + 'ms : ' + task.cmd)
+    log('END TASK - ' + taskLog.elapsed + 'ms : ' + task.cmd)
     return taskLog
 }
 
 function exportArtifacts(pipeline, pipelineDir) {
+    log('Exporting artifacts...')
 
-    pipeline.artifacts.forEach(function(artifact){
+    pipeline.artifacts.forEach(function(artifact) {
       var sourcePath = pipelineDir + '/src/' + artifact.src
       var artifactPath = pipelineDir + '/artifacts/' + artifact.dst
       try{
         var files = ls(sourcePath)
       } catch(err) {
-        console.log(err)
+        log(err)
       }
 
       mkdir('-p', artifactPath)
@@ -190,4 +203,8 @@ function updateHistory(domain, data) {
 
   // save the history file
   jsonfile.writeFileSync(DIR + '/history.json', history)
+}
+
+function log(message) {
+  console.log(dateFormat(new Date(), "dd-mm-yyyy HH:MM:ss.l") + ' ' + message)
 }
