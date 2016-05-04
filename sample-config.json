@@ -1,0 +1,47 @@
+{
+  "pipelines": [
+    {
+      "name": "My Android Project",
+      "domain": "myandroidproject",
+      "src": "https://path.to.git.of.project",
+      "vc": {
+        "type": "git",
+        "branch": "dev"
+      },
+      "artifacts": [
+        {
+          "src": "app/build/outputs/apk/*.apk",
+          "dst": "apk"
+        }
+      ],
+      "stages": [
+        {
+          "name": "Build test app",
+          "jobs": [
+            {
+              "name": "Build test app",
+              "tasks": [
+                {
+                  "cmd": "./gradlew assembleDebug"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Build prep app",
+          "jobs": [
+            {
+              "name": "Build prep app",
+              "tasks": [
+                {
+                  "cmd": "./gradlew assemblePrep"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
