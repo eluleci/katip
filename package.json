@@ -1,21 +1,17 @@
 {
-  "name": "katip",
+  "name": "simitci",
   "version": "0.0.1",
-  "description": "Custom CI utility.",
+  "description": "Minimalist CI server.",
   "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
   "author": "eluleci",
-  "license": "ISC",
+  "license": "Apache 2.0",
   "bin": {
-    "katip": "./index.js"
+    "simitci": "./index.js"
   },
   "dependencies": {
     "dateformat": "^1.0.12",
     "jsonfile": "^2.3.0",
     "shelljs": "^0.7.0",
-    "sleep": "^3.0.1",
-    "sync": "^0.2.5"
+    "sleep": "^3.0.1"
   }
 }
