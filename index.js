@@ -23,10 +23,44 @@ function start() {
   }
 }
 
+/**
+ * Checks pipeline history and triggers handlePipeline() if there is a change
+ * in the project.
+ */
+function hasProjectChanged(domain) {
+
+  var history = getHistory()
+  var pipelineHistory = history[domain]
+
+  // if there is no record in the history yet, return true for initial run
+  if (!pipelineHistory) {
+    return true
+  }
+
+  var lastLog = pipelineHistory[pipelineHistory.length - 1]
+
+  var pipelineSrcDir = PIPELINES_DIR + domain+ '/src'
+  cd(pipelineSrcDir)
+
+  var commitHash = exec('git rev-parse --verify HEAD', {silent:true}).stdout
+  commitHash = commitHash.substring(0, commitHash.length - 1)
+
+  console.log(lastLog.commitHash)
+  console.log(commitHash)
+
+  return lastLog.commitHash != commitHash
+}
+
 function handlePipeline(pipeline) {
   console.log('PIPELINE: ' + pipeline.name)
 
-  var pipelineDir = PIPELINES_DIR + pipeline.package
+  // return if there is no update in the project
+  if(!hasProjectChanged(pipeline.domain)) {
+    console.log('There is no change in the project.')
+    return
+  }
+
+  var pipelineDir = PIPELINES_DIR + pipeline.domain
 
   // initialise object to store logs for this current run
   var pipelineLog = {stages:[]}
@@ -45,12 +79,15 @@ function handlePipeline(pipeline) {
   }
 
   // enter and continue in the project source directory
-  var srcDir = pipelineDir + '/src'
-  cd(srcDir)
+  cd(pipelineDir + '/src')
 
   // switch to the specified branch
   console.log("Switching to branch '" + pipeline.vc.branch + "'")
   exec('git checkout ' + pipeline.vc.branch)
+
+  // get the last commit hash and trim the \n character at the end
+  pipelineLog.commitHash = exec('git rev-parse --verify HEAD', {silent:true}).stdout
+  pipelineLog.commitHash = pipelineLog.commitHash.substring(0, pipelineLog.commitHash.length - 1)
 
   pipeline.stages.forEach(function(stage){
     pipelineLog.stages.push(handleStage(stage))
@@ -63,7 +100,7 @@ function handlePipeline(pipeline) {
   pipelineLog.end = new Date()
   pipelineLog.elapsed = pipelineLog.end - pipelineLog.start
   console.log('END PIPELINE - ' + pipelineLog.elapsed + 'ms : ' + pipeline.name)
-  updateHistory(pipeline.package, pipelineLog)
+  updateHistory(pipeline.domain, pipelineLog)
 }
 
 function handleStage(stage) {
@@ -130,20 +167,26 @@ function exportArtifacts(pipeline, pipelineDir) {
     })
 }
 
-function updateHistory(package, data) {
+function getHistory() {
 
-  var history = {}
-  try {
-    history = jsonfile.readFileSync(DIR + '/history.json')
-  } catch(err) {
-    // file not found
-  }
+    var history = {}
+    try {
+      history = jsonfile.readFileSync(DIR + '/history.json')
+    } catch(err) {
+      // file not found
+    }
+    return history
+}
 
-  // initialise history for this package if it doesn't exist in history
-  if (!history[package]) history[package] = []
+function updateHistory(domain, data) {
+
+  var history = getHistory()
+
+  // initialise history for this domain if it doesn't exist in history
+  if (!history[domain]) history[domain] = []
 
   // append new data to the history
-  history[package].push(data)
+  history[domain].push(data)
 
   // save the history file
   jsonfile.writeFileSync(DIR + '/history.json', history)
